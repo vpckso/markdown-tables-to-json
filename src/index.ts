@@ -1,7 +1,7 @@
 /*
  * index.ts
  * 
- * Main class (Extractor) for markdown-tables-to-json. Requires `marked-ts` to
+ * Main class (Extractor) for markdown-tables-to-json. Requires `markdown-it` to
  * parse Markdown-formatted strings.
  * 
  * Ian Cooper
@@ -14,8 +14,8 @@
  * @module markdown-tables-to-string
  */
 
-// import marked-ts for Markdown parsing
-import { Marked, Renderer, Align } from '@ts-stack/markdown';
+import MarkdownIt from 'markdown-it';
+
 
 /**
  * Table mode type definition; `'rows'` or `'columns'`.
@@ -23,12 +23,10 @@ import { Marked, Renderer, Align } from '@ts-stack/markdown';
 export type TableMode = 'rows' | 'columns';
 
 /**
- * Extracts tables from Markdown-formatted strings. Can be used via static methods
- * or as a renderer with `marked-ts`.
+ * Extracts tables from Markdown-formatted strings.
  * @class Extractor
- * @extends Renderer
  */
-export class Extractor extends Renderer {
+export class Extractor {
 
     mode: TableMode;
     lowercaseKeys: boolean;
@@ -44,7 +42,6 @@ export class Extractor extends Renderer {
      * @param {string} [mode] `'rows'` or `'columns'`
      */
     constructor(mode?: TableMode, lowercaseKeys?: boolean) {
-        super();
         this.lowercaseKeys = lowercaseKeys ?? false;
         this.reset(mode);
     }
@@ -60,42 +57,31 @@ export class Extractor extends Renderer {
         this.extractedTables = [];
     }
 
-    /**
-     * Renders a table (with header and body) into HTML.
-     * @param {string} header table header HTML content
-     * @param {string} body table body HTML content
-     * @returns {string} HTML-formatted table row
-     */
-    table(header: string, body: string): string {
-        this.extractedTables.push(
-            this.mode === 'rows'
-                ? this.currentTable
-                : Extractor.transposeTable(this.currentTable)
-        );
-        this.currentTable = [];
-        return super.table(header, body);
-    }
-
-    /**
-     * Renders a table row into HTML.
-     * @param {string} content table row HTML content
-     * @returns {string} HTML-formatted table row
-     */
-    tablerow(content: string): string {
-        this.currentTable.push(this.currentRow);
-        this.currentRow = [];
-        return super.tablerow(content);
-    }
-
-    /**
-     * Renders a table cell into HTML.
-     * @param {string} content table cell HTML content
-     * @param {string} flags table cell flags
-     * @returns {string} HTML-formatted table cell
-     */
-    tablecell(content: string, flags: { header?: boolean, align?: Align }): string {
-        this.currentRow.push(content);
-        return super.tablecell(content, flags);
+    protected parseTokens(tokens: MarkdownIt.Token[]): void {
+        let inTable = false;
+        let inRow = false;
+    
+        for (const token of tokens) {
+            if (token.type === 'table_open') {
+                inTable = true;
+                this.currentTable = [];
+            } else if (token.type === 'table_close') {
+                inTable = false;
+                this.extractedTables.push(
+                    this.mode === 'rows'
+                        ? this.currentTable
+                        : Extractor.transposeTable(this.currentTable)
+                );
+            } else if (inTable && token.type === 'tr_open') {
+                inRow = true;
+                this.currentRow = [];
+            } else if (inTable && token.type === 'tr_close') {
+                inRow = false;
+                this.currentTable.push(this.currentRow);
+            } else if (inRow && token.type === 'inline') {
+                this.currentRow.push(token.content);
+            }
+        }
     }
 
     /**
@@ -105,6 +91,9 @@ export class Extractor extends Renderer {
      */
     static transposeTable(table: string[][]): string[][] {
         let transposed = [];
+        if (table.length === 0) {
+            return [];
+        }
         let cols = table.length;
         let rows = table[0].length;
 
@@ -124,7 +113,9 @@ export class Extractor extends Renderer {
      * @returns {Object} object
      */
     static tableToObject(table: string[][], lowercaseKeys: boolean): {} {
-        
+        if (!table || table.length === 0) {
+            return {};
+        }
         let keys: string[] = table.shift().slice(1);
         let obj = {};
 
@@ -148,9 +139,10 @@ export class Extractor extends Renderer {
      * @returns {Extractor} an Extractor object after parsing is complete
      */
     protected static createExtractor(markdown: string, mode?: TableMode, lowercaseKeys?: boolean): Extractor {
-        let extractor = new Extractor(mode, lowercaseKeys);
-        Marked.setOptions({ renderer: extractor });
-        Marked.parse(markdown);
+        const md = new MarkdownIt();
+        const tokens = md.parse(markdown, {});
+        const extractor = new Extractor(mode, lowercaseKeys);
+        extractor.parseTokens(tokens);
         return extractor;
     }
 

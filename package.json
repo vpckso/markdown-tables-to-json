@@ -19,13 +19,14 @@
         "build:w": "./node_modules/.bin/tsc --watch"
     },
     "license": "MIT",
-    "dependencies": {
-        "@ts-stack/markdown": "^1.3.0"
-    },
     "devDependencies": {
         "@types/jest": "^30.0.0",
+        "@types/markdown-it": "^14.1.2",
         "jest": "^30.0.4",
         "ts-jest": "^29.4.0",
         "typescript": "^4.9.5"
+    },
+    "dependencies": {
+        "markdown-it": "^14.1.0"
     }
 }
